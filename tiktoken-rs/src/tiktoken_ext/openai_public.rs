@@ -3,6 +3,18 @@ pub const FIM_PREFIX: &str = "<|fim_prefix|>";
 pub const FIM_MIDDLE: &str = "<|fim_middle|>";
 pub const FIM_SUFFIX: &str = "<|fim_suffix|>";
 pub const ENDOFPROMPT: &str = "<|endofprompt|>";
+pub const STARTOFTRANSCRIPT: &str = "<|startoftranscript|>";
+pub const TRANSLATE: &str = "<|translate|>";
+pub const TRANSCRIBE: &str = "<|transcribe|>";
+pub const STARTOFLM: &str = "<|startoflm|>";
+pub const STARTOFPREV: &str = "<|startofprev|>";
+pub const NOSPEECH: &str = "<|nospeech|>";
+pub const NOTIMESTAMPS: &str = "<|notimestamps|>";
+pub const LANGUAGES: &[&str] = &[
+    "en", "zh", "de", "es", "ru", "ko", "fr", "ja", "pt", "tr", "pl", "ca", "nl", "ar", "sv", "it",
+    "id", "hi", "fi", "vi", "he", "uk", "el", "ms", "cs", "ro", "da", "hu", "ta", "no", "th", "ur",
+    "hr", "bg", "lt", "la", "mi", "ml", "cy", "sk", "te", "fa", "lv", "bn",
+];
 
 /// Adaptation of the tiktoken crate for use in Rust projects
 use anyhow::Result;
@@ -12,13 +24,13 @@ use rustc_hash::FxHashMap as HashMap;
 
 use crate::vendor_tiktoken::CoreBPE;
 
+const R50K_BASE_BPE_FILE: &str = include_str!("../../assets/r50k_base.tiktoken");
+
 /// Use for GPT-3 models like `davinci`
 /// Initializes and returns a new instance of the r50k_base tokenizer (also known as `gpt2`)
 pub fn r50k_base() -> Result<CoreBPE> {
-    let bpe_file = include_str!("../../assets/r50k_base.tiktoken");
-
     let mut encoder = HashMap::default();
-    for line in bpe_file.lines() {
+    for line in R50K_BASE_BPE_FILE.lines() {
         let mut parts = line.split(' ');
         let token = &general_purpose::STANDARD.decode(parts.next().unwrap())?;
         let rank: usize = parts.next().unwrap().parse().unwrap();
@@ -27,6 +39,62 @@ pub fn r50k_base() -> Result<CoreBPE> {
 
     let mut special_tokens = HashMap::default();
     special_tokens.insert(String::from(ENDOFTEXT), 50256);
+
+    let bpe = CoreBPE::new(
+        encoder,
+        special_tokens,
+        "'s|'t|'re|'ve|'m|'ll|'d| ?\\p{L}+| ?\\p{N}+| ?[^\\s\\p{L}\\p{N}]+|\\s+(?!\\S)|\\s+",
+    )?;
+    Ok(bpe)
+}
+
+fn add_special_token(
+    special_tokens: &mut HashMap<String, usize>,
+    token_index: &mut usize,
+    token: &str,
+) {
+    special_tokens.insert(String::from(token), *token_index);
+    *token_index += 1;
+}
+
+/// Use for OpenAI `whisper` speech to text model
+/// Initializes and returns a new instance of the whisper tokenizer.
+pub fn whisper() -> Result<CoreBPE> {
+    let mut encoder = HashMap::default();
+    for line in R50K_BASE_BPE_FILE.lines() {
+        let mut parts = line.split(' ');
+        let token = &general_purpose::STANDARD.decode(parts.next().unwrap())?;
+        let rank: usize = parts.next().unwrap().parse().unwrap();
+        encoder.insert(token.clone(), rank);
+    }
+
+    let mut special_tokens = HashMap::default();
+    let mut token_index = encoder.len();
+    add_special_token(&mut special_tokens, &mut token_index, ENDOFTEXT);
+    add_special_token(&mut special_tokens, &mut token_index, STARTOFTRANSCRIPT);
+
+    for lang in LANGUAGES {
+        add_special_token(
+            &mut special_tokens,
+            &mut token_index,
+            &format!("<|{}|>", lang),
+        );
+    }
+
+    add_special_token(&mut special_tokens, &mut token_index, TRANSLATE);
+    add_special_token(&mut special_tokens, &mut token_index, TRANSCRIBE);
+    add_special_token(&mut special_tokens, &mut token_index, STARTOFLM);
+    add_special_token(&mut special_tokens, &mut token_index, STARTOFPREV);
+    add_special_token(&mut special_tokens, &mut token_index, NOSPEECH);
+    add_special_token(&mut special_tokens, &mut token_index, NOTIMESTAMPS);
+
+    for i in 0..=1500 {
+        add_special_token(
+            &mut special_tokens,
+            &mut token_index,
+            &format!("<|{:.2}|>", i as f32 * 0.02),
+        );
+    }
 
     let bpe = CoreBPE::new(
         encoder,

@@ -5,7 +5,7 @@ use parking_lot::Mutex;
 
 use crate::vendor_tiktoken::CoreBPE;
 
-use crate::{cl100k_base, p50k_base, p50k_edit, r50k_base};
+use crate::{cl100k_base, p50k_base, p50k_edit, r50k_base, whisper};
 
 /// Returns a singleton instance of the r50k_base tokenizer. (also known as `gpt2`)
 /// Use for GPT-3 models like `davinci`
@@ -16,6 +16,17 @@ pub fn r50k_base_singleton() -> Arc<Mutex<CoreBPE>> {
         static ref R50K_BASE: Arc<Mutex<CoreBPE>> = Arc::new(Mutex::new(r50k_base().unwrap()));
     }
     R50K_BASE.clone()
+}
+
+/// Returns a singleton instance of the whisper tokenizer.
+/// Use for OpenAI `whisper` speech to text model
+///
+/// This function will only initialize the tokenizer once, and then return a reference the tokenizer.
+pub fn whisper_singleton() -> Arc<Mutex<CoreBPE>> {
+    lazy_static! {
+        static ref WHISPER: Arc<Mutex<CoreBPE>> = Arc::new(Mutex::new(whisper().unwrap()));
+    }
+    WHISPER.clone()
 }
 
 /// Returns a singleton instance of the p50k_base tokenizer.
