@@ -13,7 +13,11 @@ pub const NOTIMESTAMPS: &str = "<|notimestamps|>";
 pub const LANGUAGES: &[&str] = &[
     "en", "zh", "de", "es", "ru", "ko", "fr", "ja", "pt", "tr", "pl", "ca", "nl", "ar", "sv", "it",
     "id", "hi", "fi", "vi", "he", "uk", "el", "ms", "cs", "ro", "da", "hu", "ta", "no", "th", "ur",
-    "hr", "bg", "lt", "la", "mi", "ml", "cy", "sk", "te", "fa", "lv", "bn",
+    "hr", "bg", "lt", "la", "mi", "ml", "cy", "sk", "te", "fa", "lv", "bn", "sr", "az", "sl", "kn",
+    "et", "mk", "br", "eu", "is", "hy", "ne", "mn", "bs", "kk", "sq", "sw", "gl", "mr", "pa", "si",
+    "km", "sn", "yo", "so", "af", "oc", "ka", "be", "tg", "sd", "gu", "am", "yi", "lo", "uz", "fo",
+    "ht", "ps", "tk", "nn", "mt", "sa", "lb", "my", "bo", "tl", "mg", "as", "tt", "haw", "ln",
+    "ha", "ba", "jw", "su",
 ];
 
 /// Adaptation of the tiktoken crate for use in Rust projects
@@ -100,14 +104,7 @@ pub fn whisper_gpt2() -> Result<CoreBPE> {
     let mut encoder = HashMap::default();
     for line in R50K_BASE_BPE_FILE.lines() {
         let mut parts = line.split(' ');
-        let token_b64 = parts.next().unwrap();
-        // multilingual model includes an empty token represented as '=' which
-        // python's base64 will parse but other libraries will not
-        let token = &if token_b64 == "=" {
-            vec![]
-        } else {
-            general_purpose::STANDARD.decode(token_b64)?
-        };
+        let token = &general_purpose::STANDARD.decode(parts.next().unwrap())?;
         let rank: usize = parts.next().unwrap().parse().unwrap();
         encoder.insert(token.clone(), rank);
     }
@@ -130,7 +127,17 @@ pub fn whisper_multilingual() -> Result<CoreBPE> {
     let mut encoder = HashMap::default();
     for line in bpe_file.lines() {
         let mut parts = line.split(' ');
-        let token = &general_purpose::STANDARD.decode(parts.next().unwrap())?;
+        let token_b64 = parts.next().unwrap();
+        // multilingual model includes an empty token represented as '=' which
+        // python's base64 will parse but other libraries will not
+        let token = &if token_b64 == "=" {
+            vec![]
+        } else {
+            match general_purpose::STANDARD.decode(token_b64) {
+                Ok(v) => v,
+                Err(e) => panic!("bad shit {:?} {:?}", token_b64, e),
+            }
+        };
         let rank: usize = parts.next().unwrap().parse().unwrap();
         encoder.insert(token.clone(), rank);
     }
