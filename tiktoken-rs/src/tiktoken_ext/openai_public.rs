@@ -57,17 +57,13 @@ fn add_special_token(
     *token_index += 1;
 }
 
-/// Use for OpenAI `whisper` speech to text model
-/// Initializes and returns a new instance of the whisper tokenizer.
-pub fn whisper() -> Result<CoreBPE> {
-    let mut encoder = HashMap::default();
-    for line in R50K_BASE_BPE_FILE.lines() {
-        let mut parts = line.split(' ');
-        let token = &general_purpose::STANDARD.decode(parts.next().unwrap())?;
-        let rank: usize = parts.next().unwrap().parse().unwrap();
-        encoder.insert(token.clone(), rank);
-    }
-
+fn get_whisper_special_tokens(
+    encoder: &std::collections::HashMap<
+        Vec<u8>,
+        usize,
+        std::hash::BuildHasherDefault<rustc_hash::FxHasher>,
+    >,
+) -> std::collections::HashMap<String, usize, std::hash::BuildHasherDefault<rustc_hash::FxHasher>> {
     let mut special_tokens = HashMap::default();
     let mut token_index = encoder.len();
     add_special_token(&mut special_tokens, &mut token_index, ENDOFTEXT);
@@ -95,6 +91,51 @@ pub fn whisper() -> Result<CoreBPE> {
             &format!("<|{:.2}|>", i as f32 * 0.02),
         );
     }
+    special_tokens
+}
+
+/// Use for OpenAI `whisper` speech to text model (gpt2 version)
+/// Initializes and returns a new instance of the whisper tokenizer.
+pub fn whisper_gpt2() -> Result<CoreBPE> {
+    let mut encoder = HashMap::default();
+    for line in R50K_BASE_BPE_FILE.lines() {
+        let mut parts = line.split(' ');
+        let token_b64 = parts.next().unwrap();
+        // multilingual model includes an empty token represented as '=' which
+        // python's base64 will parse but other libraries will not
+        let token = &if token_b64 == "=" {
+            vec![]
+        } else {
+            general_purpose::STANDARD.decode(token_b64)?
+        };
+        let rank: usize = parts.next().unwrap().parse().unwrap();
+        encoder.insert(token.clone(), rank);
+    }
+
+    let special_tokens = get_whisper_special_tokens(&encoder);
+
+    let bpe = CoreBPE::new(
+        encoder,
+        special_tokens,
+        "'s|'t|'re|'ve|'m|'ll|'d| ?\\p{L}+| ?\\p{N}+| ?[^\\s\\p{L}\\p{N}]+|\\s+(?!\\S)|\\s+",
+    )?;
+    Ok(bpe)
+}
+
+/// Use for OpenAI `whisper` speech to text model (multilingual version)
+/// Initializes and returns a new instance of the whisper tokenizer.
+pub fn whisper_multilingual() -> Result<CoreBPE> {
+    let bpe_file = include_str!("../../assets/whisper_multilingual.tiktoken");
+
+    let mut encoder = HashMap::default();
+    for line in bpe_file.lines() {
+        let mut parts = line.split(' ');
+        let token = &general_purpose::STANDARD.decode(parts.next().unwrap())?;
+        let rank: usize = parts.next().unwrap().parse().unwrap();
+        encoder.insert(token.clone(), rank);
+    }
+
+    let special_tokens = get_whisper_special_tokens(&encoder);
 
     let bpe = CoreBPE::new(
         encoder,
